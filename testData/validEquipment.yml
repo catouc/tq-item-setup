@@ -1,0 +1,10 @@
+Name: "TestEquipment"
+Path: "TestPath"
+Items:
+- SlotIdentifier: "Amulet"
+  BaseName: "TestBaseName"
+  BaseRecord: "Test/BaseRecord/record.dbr"
+  PrefixName: "TestPrefixName"
+  PrefixRecord: "Test/PrefixRecord/record.dbr"
+  SuffixName: "TestSuffixName"
+  SuffixRecord: "Test/SuffixRecord/record.dbr"

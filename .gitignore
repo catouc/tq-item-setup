@@ -16,3 +16,6 @@
 
 # Local testing output
 out/*
+
+# vscode
+.vscode

@@ -5,6 +5,8 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+
+	"github.com/go-yaml/yaml"
 )
 
 const (
@@ -17,6 +19,7 @@ const (
 
 	// I know this could be iota but this is way more readable :)
 
+	UnknownSlot = -1
 	Amulet      = 0
 	Arm         = 1
 	Head        = 2
@@ -28,14 +31,21 @@ const (
 	WeaponRight = 8
 )
 
-//var allSlots = []string{"Amulet", "Arm", "Head", "Leg", "RingLeft", "RingRight", "Torso", "WeaponLeft", "WeaponRight"}
-var allSlots = []Slot{Amulet, Arm, Head, Leg, RingLeft, RingRight, Torso, WeaponLeft, WeaponRight}
-
 // Equipment is an entire equipment of a Titan Quest char plus all metadata for filesystem storage
 type Equipment struct {
-	Name  string
-	Path  string
-	Slots map[Slot]equipmentSlot
+	Name  string `yaml:"Name"`
+	Path  string `yaml:"Path"`
+	Items []Item `yaml:"Items"`
+}
+
+type Item struct {
+	SlotIdentifier string `yaml:"SlotIdentifier"`
+	BaseName       string `yaml:"BaseName"`
+	BaseRecord     string `yaml:"BaseRecord"`
+	PrefixName     string `yaml:"PrefixName"`
+	PrefixRecord   string `yaml:"PrefixRecord"`
+	SuffixName     string `yaml:"SuffixName"`
+	SuffixRecord   string `yaml:"SuffixRecord"`
 }
 
 // Slot is the slot where the equipment goes, lol
@@ -47,6 +57,8 @@ func (i Slot) String() string {
 		return "Amulet"
 	case Arm:
 		return "Arm"
+	case Head:
+		return "Head"
 	case Leg:
 		return "Leg"
 	case RingLeft:
@@ -63,23 +75,28 @@ func (i Slot) String() string {
 	return ""
 }
 
-// equipmentSlot represents one quipment equipmentSlot
-type equipmentSlot struct {
-	Item          item
-	Name          string
-	Path          string
-	MerchantTable *table
-}
-
-// item is all data any given item needs to be constructed
-type item struct {
-	Base        string
-	LootTable   *table
-	Prefix      string
-	PrefixTable *table
-	SuffixTable *table
-	Suffix      string
-	Record      string
+func SlotFromString(s string) (Slot, error) {
+	switch s {
+	case "Amulet":
+		return Amulet, nil
+	case "Arm":
+		return Arm, nil
+	case "Head":
+		return Head, nil
+	case "Leg":
+		return Leg, nil
+	case "RingLeft":
+		return RingLeft, nil
+	case "RingRight":
+		return RingRight, nil
+	case "Torso":
+		return Torso, nil
+	case "WeaponLeft":
+		return WeaponLeft, nil
+	case "WeaponRight":
+		return WeaponRight, nil
+	}
+	return UnknownSlot, fmt.Errorf("unexpectected Slot %s", s)
 }
 
 type table struct {
@@ -91,37 +108,49 @@ type table struct {
 // New sets up a new equipment directory and initialises empty equipment tables
 func New(name, folderPath string) (*Equipment, error) {
 	e := Equipment{
-		Name:  name,
-		Path:  filepath.Join(folderPath, name),
-		Slots: make(map[Slot]equipmentSlot),
-	}
-	for _, is := range allSlots {
-		s := equipmentSlot{
-			Name: is.String(),
-			Item: item{Base: "", Prefix: "", Suffix: "", Record: ""},
-			Path: filepath.Join(e.Path, is.String()),
-		}
-		if err := os.MkdirAll(s.Path, 0644); err != nil {
-			return nil, fmt.Errorf("failed to create %s: %v", s.Path, err)
-		}
-		if err := s.init(); err != nil {
-			return nil, fmt.Errorf("failed to initialise %s: %v", s.Name, err)
-		}
-		e.Slots[is] = s
+		Name: name,
+		Path: filepath.Join(folderPath, name),
 	}
 	return &e, nil
 }
 
-func (s equipmentSlot) init() error {
-	err := s.createItem("", "", "", "", "", "")
-	if err != nil {
-		return fmt.Errorf("failed to create item: %v", err)
+func (e *Equipment) Flush() error {
+	if err := os.MkdirAll(e.Path, 0644); err != nil {
+		return fmt.Errorf("failed to create %s: %v", e.Path, err)
+	}
+	if err := e.createItems(); err != nil {
+		return err
 	}
 	return nil
 }
 
-func (s equipmentSlot) createItemAffixTable(path, affixName, affixRecord string) (*table, error) {
-	headers, err := s.createTableHeader("itemAffixTable", affixName)
+func (i *Item) Validate() error {
+	_, err := SlotFromString(i.SlotIdentifier)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func FromFile(path string) (*Equipment, error) {
+	f, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open equipment file: %v", err)
+	}
+	var e Equipment
+	if err := yaml.Unmarshal(f, &e); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal equip file: %v", err)
+	}
+	for _, i := range e.Items {
+		if err := i.Validate(); err != nil {
+			return nil, fmt.Errorf("item %s is not valid: %v", i.BaseName, err)
+		}
+	}
+	return &e, nil
+}
+
+func createItemAffixTable(path, affixName, affixRecord, description string) (*table, error) {
+	headers, err := createTableHeader("itemAffixTable", affixName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s header: %v", path, err)
 	}
@@ -134,8 +163,9 @@ func (s equipmentSlot) createItemAffixTable(path, affixName, affixRecord string)
 	return &t, nil
 }
 
-func (s equipmentSlot) createItemTable(path string, prefixTable, suffixTable *table) (*table, error) {
-	headers, err := s.createTableHeader("itemTable", fmt.Sprintf("%s %s %s", s.Item.Prefix, s.Item.Base, s.Item.Suffix))
+func createItemTable(path string, prefixTable, suffixTable *table, description string) (*table, error) {
+	// TODO: find a way to make descriptions pretty, maybe this needs to be implemented on top of the item after all just for that?
+	headers, err := createTableHeader("itemTable", "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s header: %v", path, err)
 	}
@@ -156,8 +186,8 @@ func (s equipmentSlot) createItemTable(path string, prefixTable, suffixTable *ta
 	return &t, nil
 }
 
-func (s equipmentSlot) createMerchantTable(path string, itemTable *table) (*table, error) {
-	headers, err := s.createTableHeader("merchantTable", s.Item.Base)
+func createMerchantTable(path string, itemTable *table, description string) (*table, error) {
+	headers, err := createTableHeader("merchantTable", "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s header: %v", path, err)
 	}
@@ -170,7 +200,7 @@ func (s equipmentSlot) createMerchantTable(path string, itemTable *table) (*tabl
 	return &t, nil
 }
 
-func (s equipmentSlot) createTableHeader(tableType, tableDescription string) ([]byte, error) {
+func createTableHeader(tableType, tableDescription string) ([]byte, error) {
 	var template string
 	var class string
 	switch tableType {
@@ -189,57 +219,63 @@ func (s equipmentSlot) createTableHeader(tableType, tableDescription string) ([]
 	return []byte(fmt.Sprintf("templateName,%s,\nActorName,,\nClass,%s,\nFileDescription,%s,\n", template, class, tableDescription)), nil
 }
 
-func (s equipmentSlot) createItem(baseName, baseRecord, prefixName, prefixRecord, suffixName, suffixRecord string) error {
-	prefixTable, err := s.createItemAffixTable(filepath.Join(s.Path, "itemPrefixTable.dbr"), prefixName, prefixRecord)
+func (e *Equipment) createItems() error {
+	for _, item := range e.Items {
+		if err := e.createItem(item); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (e *Equipment) createItem(item Item) error {
+	if err := item.Validate(); err != nil {
+		return fmt.Errorf("item is invalid: %v", err)
+	}
+	basePath := filepath.Join(e.Path, item.SlotIdentifier)
+	if err := os.MkdirAll(basePath, 0644); err != nil {
+		return fmt.Errorf("failed to create %s: %v", basePath, err)
+	}
+	prefixTable, err := createItemAffixTable(filepath.Join(basePath, "itemPrefixTable.dbr"), item.PrefixName, item.PrefixRecord, item.PrefixName)
 	if err != nil {
 		return fmt.Errorf("failed to initialise %s: %v", prefixTable.Path, err)
 	}
 	if err := prefixTable.write(); err != nil {
 		return fmt.Errorf("failed to write table to %s: %v", prefixTable.Path, err)
 	}
-	s.Item.PrefixTable = prefixTable
 
-	suffixTable, err := s.createItemAffixTable(filepath.Join(s.Path, "itemSuffixTable.dbr"), suffixName, suffixRecord)
+	suffixTable, err := createItemAffixTable(filepath.Join(basePath, "itemSuffixTable.dbr"), item.SuffixName, item.SuffixRecord, item.SuffixName)
 	if err != nil {
 		return fmt.Errorf("failed to initialise %s: %v", suffixTable.Path, err)
 	}
 	if err := suffixTable.write(); err != nil {
 		return fmt.Errorf("failed to write table to %s: %v", suffixTable.Path, err)
 	}
-	s.Item.SuffixTable = suffixTable
 
-	itemTable, err := s.createItemTable(filepath.Join(s.Path, "itemTable.dbr"), prefixTable, suffixTable)
+	itemTable, err := createItemTable(
+		filepath.Join(basePath, "itemTable.dbr"),
+		prefixTable,
+		suffixTable,
+		fmt.Sprintf("%s %s %s", item.PrefixName, item.BaseName, item.SuffixName),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to initialise %s: %v", itemTable.Path, err)
 	}
 	if err := itemTable.write(); err != nil {
 		return fmt.Errorf("failed to write table to %s: %v", itemTable.Path, err)
 	}
-	s.Item.LootTable = itemTable
 
-	merchantTable, err := s.createMerchantTable(filepath.Join(s.Path, "merchantTable.dbr"), itemTable)
+	merchantTable, err := createMerchantTable(filepath.Join(basePath, "merchantTable.dbr"), itemTable, item.BaseName)
 	if err != nil {
 		return fmt.Errorf("failed to initialise %s: %v", merchantTable.Path, err)
 	}
 	if err := merchantTable.write(); err != nil {
 		return fmt.Errorf("failed to write table to %s: %v", merchantTable.Path, err)
 	}
-	s.MerchantTable = merchantTable
 	return nil
 }
 
-func (s equipmentSlot) SetItem(baseName, baseRecord, prefixName, prefixRecord, suffixName, suffixRecord string) error {
-	s.Item.Base = baseName
-	s.Item.Prefix = prefixName
-	s.Item.Suffix = suffixName
-
-	if err := s.createItem(baseName, baseRecord, prefixName, prefixRecord, suffixName, suffixRecord); err != nil {
-		return fmt.Errorf("failed to set item: %v", err)
-	}
-	return nil
-}
-
-func (t table) write() error {
+func (t *table) write() error {
 	err := ioutil.WriteFile(t.Path, append(t.Headers, t.Body...), 0644)
 	if err != nil {
 		return fmt.Errorf("failed writing table file %s: %v", t.Path, err)
