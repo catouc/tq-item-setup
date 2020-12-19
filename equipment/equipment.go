@@ -19,40 +19,22 @@ func allSlots() []string {
 	return []string{"Amulet", "Arm", "Head", "Leg", "RingLeft", "RingRight", "Torso", "WeaponLeft", "WeaponRight"}
 }
 
-func itemTables() []string {
-	return []string{"merchantTable", "itemTable", "itemPrefixTable", "itemSuffixTable"}
-}
-
 // Equipment is an entire equipment of a Titan Quest char plus all metadata for filesystem storage
 type Equipment struct {
 	Name  string
 	Path  string
-	Slots []Slot
+	Slots []slot
 }
 
-// Slot represents one quipment slot
-type Slot struct {
-	Item Item
+// slot represents one quipment slot
+type slot struct {
+	Item item
 	Name string
 	Path string
 }
 
-/*
-type Slots struct {
-	Head        Item
-	Torso       Item
-	Arm         Item
-	Leg         Item
-	RingLeft    Item
-	RingRight   Item
-	WeaponLeft  Item
-	WeaponRight Item
-	Amulet      Item
-}
-*/
-
-// Item is all data any given item needs to be constructed
-type Item struct {
+// item is all data any given item needs to be constructed
+type item struct {
 	Base   string
 	Prefix string
 	Suffix string
@@ -71,31 +53,24 @@ func New(name, folderPath string) (*Equipment, error) {
 		Name: name,
 		Path: fmt.Sprintf("%s/%s", folderPath, name),
 	}
-	/*err := os.MkdirAll(fmt.Sprintf("%s/%s", e.Path, e.Name), 0644)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create directory %s: %v", e.Path, err)
-	}*/
-	for _, s := range allSlots() {
-		slot := Slot{
-			Name: s,
-			Item: Item{Base: "", Prefix: "", Suffix: "", Record: ""},
-			Path: fmt.Sprintf("%s/%s", e.Path, s),
+	for _, sName := range allSlots() {
+		s := slot{
+			Name: sName,
+			Item: item{Base: "", Prefix: "", Suffix: "", Record: ""},
+			Path: fmt.Sprintf("%s/%s", e.Path, sName),
 		}
-		os.MkdirAll(fmt.Sprintf("%s", slot.Path), 0644)
-		err := slot.init()
+		os.MkdirAll(fmt.Sprintf("%s", s.Path), 0644)
+		err := s.init()
 		if err != nil {
-			return nil, fmt.Errorf("failed to initialise %s: %v", slot.Name, err)
+			return nil, fmt.Errorf("failed to initialise %s: %v", s.Name, err)
 		}
 
-		e.Slots = append(e.Slots, slot)
+		e.Slots = append(e.Slots, s)
 	}
-	// create item table
-	// create prefix table
-	// create suffix table
 	return &e, nil
 }
 
-func (s Slot) init() error {
+func (s slot) init() error {
 	prefixTable, err := s.createItemAffixTable(fmt.Sprintf("%s/%s.dbr", s.Path, "itemPrefixTable"), true)
 	if err != nil {
 		return fmt.Errorf("failed to initialise %s: %v", prefixTable.Path, err)
@@ -134,7 +109,7 @@ func (s Slot) init() error {
 	return nil
 }
 
-func (s Slot) createItemAffixTable(path string, prefix bool) (*table, error) {
+func (s slot) createItemAffixTable(path string, prefix bool) (*table, error) {
 	var description string
 	if prefix {
 		description = s.Item.Prefix
@@ -154,7 +129,7 @@ func (s Slot) createItemAffixTable(path string, prefix bool) (*table, error) {
 	return &t, nil
 }
 
-func (s Slot) createItemTable(path string, prefixTable, suffixTable *table) (*table, error) {
+func (s slot) createItemTable(path string, prefixTable, suffixTable *table) (*table, error) {
 	headers, err := s.createTableHeader("itemTable", fmt.Sprintf("%s %s %s", s.Item.Prefix, s.Item.Base, s.Item.Suffix))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s header: %v", path, err)
@@ -176,7 +151,7 @@ func (s Slot) createItemTable(path string, prefixTable, suffixTable *table) (*ta
 	return &t, nil
 }
 
-func (s Slot) createMerchantTable(path string, itemTable *table) (*table, error) {
+func (s slot) createMerchantTable(path string, itemTable *table) (*table, error) {
 	headers, err := s.createTableHeader("merchantTable", s.Item.Base)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s header: %v", path, err)
@@ -190,7 +165,7 @@ func (s Slot) createMerchantTable(path string, itemTable *table) (*table, error)
 	return &t, nil
 }
 
-func (s Slot) createTableHeader(tableType, tableDescription string) ([]byte, error) {
+func (s slot) createTableHeader(tableType, tableDescription string) ([]byte, error) {
 	var template string
 	var class string
 	switch tableType {
