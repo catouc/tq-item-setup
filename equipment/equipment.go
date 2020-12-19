@@ -23,22 +23,26 @@ func allSlots() []string {
 type Equipment struct {
 	Name  string
 	Path  string
-	Slots []slot
+	Slots map[string]slot
 }
 
 // slot represents one quipment slot
 type slot struct {
-	Item item
-	Name string
-	Path string
+	Item          item
+	Name          string
+	Path          string
+	MerchantTable *table
 }
 
 // item is all data any given item needs to be constructed
 type item struct {
-	Base   string
-	Prefix string
-	Suffix string
-	Record string
+	Base        string
+	LootTable   *table
+	Prefix      string
+	PrefixTable *table
+	SuffixTable *table
+	Suffix      string
+	Record      string
 }
 
 type table struct {
@@ -50,8 +54,9 @@ type table struct {
 // New sets up a new equipment directory and initialises empty equipment tables
 func New(name, folderPath string) (*Equipment, error) {
 	e := Equipment{
-		Name: name,
-		Path: fmt.Sprintf("%s/%s", folderPath, name),
+		Name:  name,
+		Path:  fmt.Sprintf("%s/%s", folderPath, name),
+		Slots: make(map[string]slot),
 	}
 	for _, sName := range allSlots() {
 		s := slot{
@@ -59,68 +64,31 @@ func New(name, folderPath string) (*Equipment, error) {
 			Item: item{Base: "", Prefix: "", Suffix: "", Record: ""},
 			Path: fmt.Sprintf("%s/%s", e.Path, sName),
 		}
-		os.MkdirAll(fmt.Sprintf("%s", s.Path), 0644)
+		os.MkdirAll(s.Path, 0644)
 		err := s.init()
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialise %s: %v", s.Name, err)
 		}
 
-		e.Slots = append(e.Slots, s)
+		e.Slots[sName] = s
 	}
 	return &e, nil
 }
 
 func (s slot) init() error {
-	prefixTable, err := s.createItemAffixTable(fmt.Sprintf("%s/%s.dbr", s.Path, "itemPrefixTable"), true)
+	err := s.createItem("", "", "", "", "", "")
 	if err != nil {
-		return fmt.Errorf("failed to initialise %s: %v", prefixTable.Path, err)
-	}
-	err = prefixTable.write()
-	if err != nil {
-		return fmt.Errorf("failed to write table to %s: %v", prefixTable.Path, err)
-	}
-
-	suffixTable, err := s.createItemAffixTable(fmt.Sprintf("%s/%s.dbr", s.Path, "itemSuffixTable"), false)
-	if err != nil {
-		return fmt.Errorf("failed to initialise %s: %v", suffixTable.Path, err)
-	}
-	err = suffixTable.write()
-	if err != nil {
-		return fmt.Errorf("failed to write table to %s: %v", suffixTable.Path, err)
-	}
-
-	itemTable, err := s.createItemTable(fmt.Sprintf("%s/%s.dbr", s.Path, "itemTable"), prefixTable, suffixTable)
-	if err != nil {
-		return fmt.Errorf("failed to initialise %s: %v", itemTable.Path, err)
-	}
-	err = itemTable.write()
-	if err != nil {
-		return fmt.Errorf("failed to write table to %s: %v", itemTable.Path, err)
-	}
-
-	merchantTable, err := s.createMerchantTable(fmt.Sprintf("%s/%s.dbr", s.Path, "merchantTable"), itemTable)
-	if err != nil {
-		return fmt.Errorf("failed to initialise %s: %v", merchantTable.Path, err)
-	}
-	err = merchantTable.write()
-	if err != nil {
-		return fmt.Errorf("failed to write table to %s: %v", merchantTable.Path, err)
+		return fmt.Errorf("failed to create item: %v", err)
 	}
 	return nil
 }
 
-func (s slot) createItemAffixTable(path string, prefix bool) (*table, error) {
-	var description string
-	if prefix {
-		description = s.Item.Prefix
-	} else {
-		description = s.Item.Suffix
-	}
-	headers, err := s.createTableHeader("itemAffixTable", description)
+func (s slot) createItemAffixTable(path, affixName, affixRecord string) (*table, error) {
+	headers, err := s.createTableHeader("itemAffixTable", affixName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s header: %v", path, err)
 	}
-	body := []byte("randomizerName1,,\nrandomizerWeight1,,\n")
+	body := []byte(fmt.Sprintf("randomizerName1,%s,\nrandomizerWeight1,100,\n", affixRecord))
 	t := table{
 		Path:    path,
 		Headers: headers,
@@ -184,10 +152,66 @@ func (s slot) createTableHeader(tableType, tableDescription string) ([]byte, err
 	return []byte(fmt.Sprintf("templateName,%s,\nActorName,,\nClass,%s,\nFileDescription,%s,\n", template, class, tableDescription)), nil
 }
 
+func (s slot) createItem(baseName, baseRecord, prefixName, prefixRecord, suffixName, suffixRecord string) error {
+	prefixTable, err := s.createItemAffixTable(fmt.Sprintf("%s/%s.dbr", s.Path, "itemPrefixTable"), prefixName, prefixRecord)
+	if err != nil {
+		return fmt.Errorf("failed to initialise %s: %v", prefixTable.Path, err)
+	}
+	err = prefixTable.write()
+	if err != nil {
+		return fmt.Errorf("failed to write table to %s: %v", prefixTable.Path, err)
+	}
+	s.Item.PrefixTable = prefixTable
+
+	suffixTable, err := s.createItemAffixTable(fmt.Sprintf("%s/%s.dbr", s.Path, "itemSuffixTable"), suffixName, suffixRecord)
+	if err != nil {
+		return fmt.Errorf("failed to initialise %s: %v", suffixTable.Path, err)
+	}
+	err = suffixTable.write()
+	if err != nil {
+		return fmt.Errorf("failed to write table to %s: %v", suffixTable.Path, err)
+	}
+	s.Item.SuffixTable = suffixTable
+
+	itemTable, err := s.createItemTable(fmt.Sprintf("%s/%s.dbr", s.Path, "itemTable"), prefixTable, suffixTable)
+	if err != nil {
+		return fmt.Errorf("failed to initialise %s: %v", itemTable.Path, err)
+	}
+	err = itemTable.write()
+	if err != nil {
+		return fmt.Errorf("failed to write table to %s: %v", itemTable.Path, err)
+	}
+	s.Item.LootTable = itemTable
+
+	merchantTable, err := s.createMerchantTable(fmt.Sprintf("%s/%s.dbr", s.Path, "merchantTable"), itemTable)
+	if err != nil {
+		return fmt.Errorf("failed to initialise %s: %v", merchantTable.Path, err)
+	}
+	err = merchantTable.write()
+	if err != nil {
+		return fmt.Errorf("failed to write table to %s: %v", merchantTable.Path, err)
+	}
+	s.MerchantTable = merchantTable
+	return nil
+}
+
+func (s slot) setItem(baseName, baseRecord, prefixName, prefixRecord, suffixName, suffixRecord string) error {
+	s.Item.Base = baseName
+	s.Item.Prefix = prefixName
+	s.Item.Suffix = suffixName
+
+	s.createItem(baseName, baseRecord, prefixName, prefixRecord, suffixName, suffixRecord)
+	return nil
+}
+
 func (t table) write() error {
 	err := ioutil.WriteFile(t.Path, append(t.Headers, t.Body...), 0644)
 	if err != nil {
 		return fmt.Errorf("failed writing table file %s: %v", t.Path, err)
 	}
+	return nil
+}
+
+func (t table) update(path string, header, body []byte) error {
 	return nil
 }

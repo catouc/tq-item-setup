@@ -1,20 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/Deichindianer/tq-item-setup/equipment"
 )
 
 func main() {
-	/*
-		templateName,database\Templates\LootItemTable_FixedWeight.tpl,
-		ActorName,,
-		Class,LootItemTable_FixedWeight,
-		FileDescription,,
-	*/
-	_, err := equipment.New("lvl_30", "out")
+	e, err := equipment.New("lvl_30", "out")
 	if err != nil {
 		log.Fatal(err)
 	}
+	fmt.Printf("%s %s %s", e.Slots["Head"].Item.Prefix, e.Slots["Head"].Item.Base, e.Slots["Head"].Item.Suffix)
 }
