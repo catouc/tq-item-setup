@@ -19,6 +19,7 @@ const (
 
 	// I know this could be iota but this is way more readable :)
 
+	// UnknownSlot represents an invalid item slot
 	UnknownSlot = -1
 	Amulet      = 0
 	Arm         = 1
@@ -38,6 +39,8 @@ type Equipment struct {
 	Items []Item `yaml:"Items"`
 }
 
+// Item holds all references to item configuration.
+// Also this is used to represent the config structure.
 type Item struct {
 	SlotIdentifier string `yaml:"SlotIdentifier"`
 	BaseName       string `yaml:"BaseName"`
@@ -75,6 +78,7 @@ func (i Slot) String() string {
 	return ""
 }
 
+// SlotFromString converts a string representation of a slot into its constant value.
 func SlotFromString(s string) (Slot, error) {
 	switch s {
 	case "Amulet":
@@ -114,6 +118,7 @@ func New(name, folderPath string) (*Equipment, error) {
 	return &e, nil
 }
 
+// Flush creates the entire representation of the equipment in the filesystem.
 func (e *Equipment) Flush() error {
 	if err := os.MkdirAll(e.Path, 0644); err != nil {
 		return fmt.Errorf("failed to create %s: %v", e.Path, err)
@@ -124,6 +129,8 @@ func (e *Equipment) Flush() error {
 	return nil
 }
 
+// Validate validates an item.
+// Currently this only checks if the slot identifier is valid.
 func (i *Item) Validate() error {
 	_, err := SlotFromString(i.SlotIdentifier)
 	if err != nil {
@@ -132,6 +139,7 @@ func (i *Item) Validate() error {
 	return nil
 }
 
+// FromFile reads a given file path and builds an equipment struct from that.
 func FromFile(path string) (*Equipment, error) {
 	f, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -149,9 +157,10 @@ func FromFile(path string) (*Equipment, error) {
 	return &e, nil
 }
 
-func createItemAffixTable(path, affixName, affixRecord, description string) (*table, error) {
+func createItemAffixTable(path, affixName, affixRecord string) (*table, error) {
 	headers, err := createTableHeader("itemAffixTable", affixName)
 	if err != nil {
+		// this literally cannot happen right now until the createTableHeader function changes
 		return nil, fmt.Errorf("failed to create %s header: %v", path, err)
 	}
 	body := []byte(fmt.Sprintf("randomizerName1,%s,\nrandomizerWeight1,100,\n", affixRecord))
@@ -163,16 +172,16 @@ func createItemAffixTable(path, affixName, affixRecord, description string) (*ta
 	return &t, nil
 }
 
-func createItemTable(path string, prefixTable, suffixTable *table, description string) (*table, error) {
+func createItemTable(path, lootPath, prefixPath, suffixPath, description string) (*table, error) {
 	// TODO: find a way to make descriptions pretty, maybe this needs to be implemented on top of the item after all just for that?
-	headers, err := createTableHeader("itemTable", "")
+	headers, err := createTableHeader("itemTable", description)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s header: %v", path, err)
 	}
 	baseConfig := []byte("bothPrefixSuffix,100\n")
-	lootConfig := []byte("lootName1,,\nlootWeight1,100,\n")
-	prefixConfig := []byte(fmt.Sprintf("prefixRandomizerChance,100,\nprefixRandomizerName1,%s,\nprefixRandomizerWeight1,,\n", prefixTable.Path))
-	suffixConfig := []byte(fmt.Sprintf("suffixRandomizerChance,100,\nsuffixRandomizerName1,%s,\nsuffixRandomizerWeight1,,\n", suffixTable.Path))
+	lootConfig := []byte(fmt.Sprintf("lootName1,%s,\nlootWeight1,100,\n", lootPath))
+	prefixConfig := []byte(fmt.Sprintf("prefixRandomizerChance,100,\nprefixRandomizerName1,%s,\nprefixRandomizerWeight1,,\n", prefixPath))
+	suffixConfig := []byte(fmt.Sprintf("suffixRandomizerChance,100,\nsuffixRandomizerName1,%s,\nsuffixRandomizerWeight1,,\n", suffixPath))
 	configs := [][]byte{baseConfig, lootConfig, prefixConfig, suffixConfig}
 	var body []byte
 	for _, c := range configs {
@@ -186,12 +195,13 @@ func createItemTable(path string, prefixTable, suffixTable *table, description s
 	return &t, nil
 }
 
-func createMerchantTable(path string, itemTable *table, description string) (*table, error) {
-	headers, err := createTableHeader("merchantTable", "")
+// TODO: maybe remove the hard dependancy on an itemTable since it only needs a itemPath
+func createMerchantTable(path, itemPath, description string) (*table, error) {
+	headers, err := createTableHeader("merchantTable", description)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s header: %v", path, err)
 	}
-	body := []byte(fmt.Sprintf("lootName1,%s,\nlootWeight1,100,\n", itemTable.Path))
+	body := []byte(fmt.Sprintf("lootName1,%s,\nlootWeight1,100,\n", itemPath))
 	t := table{
 		Path:    path,
 		Headers: headers,
@@ -236,7 +246,7 @@ func (e *Equipment) createItem(item Item) error {
 	if err := os.MkdirAll(basePath, 0644); err != nil {
 		return fmt.Errorf("failed to create %s: %v", basePath, err)
 	}
-	prefixTable, err := createItemAffixTable(filepath.Join(basePath, "itemPrefixTable.dbr"), item.PrefixName, item.PrefixRecord, item.PrefixName)
+	prefixTable, err := createItemAffixTable(filepath.Join(basePath, "itemPrefixTable.dbr"), item.PrefixName, item.PrefixRecord)
 	if err != nil {
 		return fmt.Errorf("failed to initialise %s: %v", prefixTable.Path, err)
 	}
@@ -244,7 +254,7 @@ func (e *Equipment) createItem(item Item) error {
 		return fmt.Errorf("failed to write table to %s: %v", prefixTable.Path, err)
 	}
 
-	suffixTable, err := createItemAffixTable(filepath.Join(basePath, "itemSuffixTable.dbr"), item.SuffixName, item.SuffixRecord, item.SuffixName)
+	suffixTable, err := createItemAffixTable(filepath.Join(basePath, "itemSuffixTable.dbr"), item.SuffixName, item.SuffixRecord)
 	if err != nil {
 		return fmt.Errorf("failed to initialise %s: %v", suffixTable.Path, err)
 	}
@@ -254,8 +264,9 @@ func (e *Equipment) createItem(item Item) error {
 
 	itemTable, err := createItemTable(
 		filepath.Join(basePath, "itemTable.dbr"),
-		prefixTable,
-		suffixTable,
+		item.BaseRecord,
+		prefixTable.Path,
+		suffixTable.Path,
 		fmt.Sprintf("%s %s %s", item.PrefixName, item.BaseName, item.SuffixName),
 	)
 	if err != nil {
@@ -265,7 +276,7 @@ func (e *Equipment) createItem(item Item) error {
 		return fmt.Errorf("failed to write table to %s: %v", itemTable.Path, err)
 	}
 
-	merchantTable, err := createMerchantTable(filepath.Join(basePath, "merchantTable.dbr"), itemTable, item.BaseName)
+	merchantTable, err := createMerchantTable(filepath.Join(basePath, "merchantTable.dbr"), itemTable.Path, item.BaseName)
 	if err != nil {
 		return fmt.Errorf("failed to initialise %s: %v", merchantTable.Path, err)
 	}
