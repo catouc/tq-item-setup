@@ -198,7 +198,6 @@ func createItemTable(path, lootPath, prefixPath, suffixPath, description string)
 	return &t, nil
 }
 
-// TODO: maybe remove the hard dependancy on an itemTable since it only needs a itemPath
 func createMerchantTable(path, itemPath, description string) (*table, error) {
 	headers, err := createTableHeader("merchantTable", description)
 	if err != nil {
