@@ -16,10 +16,13 @@ const (
 	itemTableTemplate     = "database\\Templates\\LootItemTable_FixedWeight.tpl"
 	merchantTableClass    = "LootMasterTable.tpl"
 	merchantTableTemplate = "database\\Templates\\LootMasterTable.tpl"
+)
 
+// Constants for all the item slots.
+// They can be converted to and from strings.
+// UnknownSlot is treated as an invalid slot and used in error cases.
+const (
 	// I know this could be iota but this is way more readable :)
-
-	// UnknownSlot represents an invalid item slot
 	UnknownSlot = -1
 	Amulet      = 0
 	Arm         = 1
@@ -109,7 +112,7 @@ type table struct {
 	Body    []byte
 }
 
-// New sets up a new equipment directory and initialises empty equipment tables
+// New creates the memory construct for the table bases
 func New(name, folderPath string) (*Equipment, error) {
 	e := Equipment{
 		Name: name,
