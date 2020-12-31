@@ -10,11 +10,11 @@ import (
 )
 
 const (
-	affixTableClass       = "LootRandomizerTable.tpl"
+	affixTableClass       = "LootRandomizerTable"
 	affixTableTemplate    = "database\\Templates\\LootRandomizerTable.tpl"
-	itemTableClass        = "LootItemTable_FixedWeight.tpl"
+	itemTableClass        = "LootItemTable_FixedWeight"
 	itemTableTemplate     = "database\\Templates\\LootItemTable_FixedWeight.tpl"
-	merchantTableClass    = "LootMasterTable.tpl"
+	merchantTableClass    = "LootMasterTable"
 	merchantTableTemplate = "database\\Templates\\LootMasterTable.tpl"
 )
 
@@ -37,9 +37,10 @@ const (
 
 // Equipment is an entire equipment of a Titan Quest char plus all metadata for filesystem storage
 type Equipment struct {
-	Name  string `yaml:"Name"`
-	Path  string `yaml:"Path"`
-	Items []Item `yaml:"Items"`
+	Name       string `yaml:"Name"`
+	FolderPath string `yaml:"FolderPath"`
+	TablePath  string `yaml:"TablePath"`
+	Items      []Item `yaml:"Items"`
 }
 
 // Item holds all references to item configuration.
@@ -115,16 +116,16 @@ type table struct {
 // New creates the memory construct for the table bases
 func New(name, folderPath string) (*Equipment, error) {
 	e := Equipment{
-		Name: name,
-		Path: filepath.Join(folderPath, name),
+		Name:       name,
+		FolderPath: filepath.Join(folderPath, name),
 	}
 	return &e, nil
 }
 
 // Flush creates the entire representation of the equipment in the filesystem.
 func (e *Equipment) Flush() error {
-	if err := os.MkdirAll(e.Path, 0644); err != nil {
-		return fmt.Errorf("failed to create %s: %v", e.Path, err)
+	if err := os.MkdirAll(filepath.Join(e.FolderPath, e.TablePath), 0644); err != nil {
+		return fmt.Errorf("failed to create %s: %v", e.FolderPath, err)
 	}
 	if err := e.createItems(); err != nil {
 		return err
@@ -176,15 +177,15 @@ func createItemAffixTable(path, affixName, affixRecord string) (*table, error) {
 }
 
 func createItemTable(path, lootPath, prefixPath, suffixPath, description string) (*table, error) {
-	// TODO: find a way to make descriptions pretty, maybe this needs to be implemented on top of the item after all just for that?
 	headers, err := createTableHeader("itemTable", description)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s header: %v", path, err)
 	}
-	baseConfig := []byte("bothPrefixSuffix,100\n")
+	// baseConfig := []byte("bothPrefixSuffix,100\nbrokenOnly,0,\nbrokenRandomizerChance,0.000000,\nbrokenRandomizerName1,,\nbrokenRandomizerWeight1,,")
+	baseConfig := []byte("bothPrefixSuffix,100,\n")
 	lootConfig := []byte(fmt.Sprintf("lootName1,%s,\nlootWeight1,100,\n", lootPath))
-	prefixConfig := []byte(fmt.Sprintf("prefixRandomizerChance,100,\nprefixRandomizerName1,%s,\nprefixRandomizerWeight1,,\n", prefixPath))
-	suffixConfig := []byte(fmt.Sprintf("suffixRandomizerChance,100,\nsuffixRandomizerName1,%s,\nsuffixRandomizerWeight1,,\n", suffixPath))
+	prefixConfig := []byte(fmt.Sprintf("prefixRandomizerChance,100.000000,\nprefixRandomizerName1,%s,\nprefixRandomizerWeight1,100,\n", prefixPath))
+	suffixConfig := []byte(fmt.Sprintf("suffixRandomizerChance,100.000000,\nsuffixRandomizerName1,%s,\nsuffixRandomizerWeight1,100,\n", suffixPath))
 	configs := [][]byte{baseConfig, lootConfig, prefixConfig, suffixConfig}
 	var body []byte
 	for _, c := range configs {
@@ -244,28 +245,29 @@ func (e *Equipment) createItem(item Item) error {
 	if err := item.Validate(); err != nil {
 		return fmt.Errorf("item is invalid: %v", err)
 	}
-	basePath := filepath.Join(e.Path, item.SlotIdentifier)
-	if err := os.MkdirAll(basePath, 0644); err != nil {
-		return fmt.Errorf("failed to create %s: %v", basePath, err)
+	baseTablePath := filepath.Join(e.TablePath, item.SlotIdentifier)
+	writePath := filepath.Join(e.FolderPath, baseTablePath)
+	if err := os.MkdirAll(writePath, 0644); err != nil {
+		return fmt.Errorf("failed to create %s: %v", baseTablePath, err)
 	}
-	prefixTable, err := createItemAffixTable(filepath.Join(basePath, "itemPrefixTable.dbr"), item.PrefixName, item.PrefixRecord)
+	prefixTable, err := createItemAffixTable(filepath.Join(baseTablePath, "itemPrefixTable.dbr"), item.PrefixName, item.PrefixRecord)
 	if err != nil {
 		return fmt.Errorf("failed to initialise %s: %v", prefixTable.Path, err)
 	}
-	if err := prefixTable.write(); err != nil {
+	if err := prefixTable.write(e.FolderPath); err != nil {
 		return fmt.Errorf("failed to write table to %s: %v", prefixTable.Path, err)
 	}
 
-	suffixTable, err := createItemAffixTable(filepath.Join(basePath, "itemSuffixTable.dbr"), item.SuffixName, item.SuffixRecord)
+	suffixTable, err := createItemAffixTable(filepath.Join(baseTablePath, "itemSuffixTable.dbr"), item.SuffixName, item.SuffixRecord)
 	if err != nil {
 		return fmt.Errorf("failed to initialise %s: %v", suffixTable.Path, err)
 	}
-	if err := suffixTable.write(); err != nil {
+	if err := suffixTable.write(e.FolderPath); err != nil {
 		return fmt.Errorf("failed to write table to %s: %v", suffixTable.Path, err)
 	}
 
 	itemTable, err := createItemTable(
-		filepath.Join(basePath, "itemTable.dbr"),
+		filepath.Join(baseTablePath, "itemTable.dbr"),
 		item.BaseRecord,
 		prefixTable.Path,
 		suffixTable.Path,
@@ -274,22 +276,23 @@ func (e *Equipment) createItem(item Item) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialise %s: %v", itemTable.Path, err)
 	}
-	if err := itemTable.write(); err != nil {
+	if err := itemTable.write(e.FolderPath); err != nil {
 		return fmt.Errorf("failed to write table to %s: %v", itemTable.Path, err)
 	}
 
-	merchantTable, err := createMerchantTable(filepath.Join(basePath, "merchantTable.dbr"), itemTable.Path, item.BaseName)
+	merchantTable, err := createMerchantTable(filepath.Join(baseTablePath, "merchantTable.dbr"), itemTable.Path, item.BaseName)
 	if err != nil {
 		return fmt.Errorf("failed to initialise %s: %v", merchantTable.Path, err)
 	}
-	if err := merchantTable.write(); err != nil {
+	if err := merchantTable.write(e.FolderPath); err != nil {
 		return fmt.Errorf("failed to write table to %s: %v", merchantTable.Path, err)
 	}
 	return nil
 }
 
-func (t *table) write() error {
-	err := ioutil.WriteFile(t.Path, append(t.Headers, t.Body...), 0644)
+func (t *table) write(folderPath string) error {
+	writePath := filepath.Join(folderPath, t.Path)
+	err := ioutil.WriteFile(writePath, append(t.Headers, t.Body...), 0644)
 	if err != nil {
 		return fmt.Errorf("failed writing table file %s: %v", t.Path, err)
 	}

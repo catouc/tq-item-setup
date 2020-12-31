@@ -1,3 +1,4 @@
 Name: "TestEquipment"
-Path: "TestPath"
+FolderPath: 'C:\TMP'
+TablePath: 'tmp\test_equip'
 Items:

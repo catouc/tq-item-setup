@@ -2,6 +2,8 @@ package equipment
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/go-test/deep"
@@ -180,8 +182,9 @@ func TestFromFile(t *testing.T) {
 			Name: "ValidEquipment",
 			In:   "../testData/validEquipment.yml",
 			Out: &Equipment{
-				Name: "TestEquipment",
-				Path: "TestPath",
+				Name:       "TestEquipment",
+				FolderPath: `C:\TMP`,
+				TablePath:  `tmp\test_equip`,
 				Items: []Item{
 					{
 						SlotIdentifier: "Amulet",
@@ -200,8 +203,9 @@ func TestFromFile(t *testing.T) {
 			Name: "ValidEquipmentMultipleItems",
 			In:   "../testData/validEquipmentMultipleItems.yml",
 			Out: &Equipment{
-				Name: "TestEquipment",
-				Path: "TestPath",
+				Name:       "TestEquipment",
+				FolderPath: `C:\TMP`,
+				TablePath:  `tmp\test_equip`,
 				Items: []Item{
 					{
 						SlotIdentifier: "Amulet",
@@ -229,9 +233,10 @@ func TestFromFile(t *testing.T) {
 			Name: "ValidEquipmentNoItems",
 			In:   "../testData/validEquipmentNoItems.yml",
 			Out: &Equipment{
-				Name:  "TestEquipment",
-				Path:  "TestPath",
-				Items: nil,
+				Name:       "TestEquipment",
+				FolderPath: `C:\TMP`,
+				TablePath:  `tmp\test_equip`,
+				Items:      nil,
 			},
 			OK: true,
 		},
@@ -288,9 +293,12 @@ func TestNew(t *testing.T) {
 			InName:       "test_equip",
 			InFolderPath: "test_out",
 			Out: &Equipment{
-				Name:  "test_equip",
-				Path:  "test_out/test_equip",
-				Items: nil,
+				Name: "test_equip",
+				// This is depending on the OS currently
+				// Since this tool is mainly run on Windows this case checks for that.
+				FolderPath: `test_out\test_equip`,
+				TablePath:  "",
+				Items:      nil,
 			},
 			OK: true,
 		},
@@ -328,7 +336,7 @@ func TestCreateAffixTable(t *testing.T) {
 			InAffixRecord: "records/item/LootMagicalAffixes/Prefix/Default/TestAffix.dbr",
 			Out: &table{
 				Path:    "test/Amulet/ItemPrefixTable.dbr",
-				Headers: []byte("templateName,database\\Templates\\LootRandomizerTable.tpl,\nActorName,,\nClass,LootRandomizerTable.tpl,\nFileDescription,TestAffix,\n"),
+				Headers: []byte("templateName,database\\Templates\\LootRandomizerTable.tpl,\nActorName,,\nClass,LootRandomizerTable,\nFileDescription,TestAffix,\n"),
 				Body:    []byte("randomizerName1,records/item/LootMagicalAffixes/Prefix/Default/TestAffix.dbr,\nrandomizerWeight1,100,\n"),
 			},
 			OK: true,
@@ -340,7 +348,7 @@ func TestCreateAffixTable(t *testing.T) {
 			InAffixRecord: "records/item/LootMagicalAffixes/Prefix/Default/TestAffix.dbr",
 			Out: &table{
 				Path:    "test\\Amulet\\ItemPrefixTable.dbr",
-				Headers: []byte("templateName,database\\Templates\\LootRandomizerTable.tpl,\nActorName,,\nClass,LootRandomizerTable.tpl,\nFileDescription,TestAffix,\n"),
+				Headers: []byte("templateName,database\\Templates\\LootRandomizerTable.tpl,\nActorName,,\nClass,LootRandomizerTable,\nFileDescription,TestAffix,\n"),
 				Body:    []byte("randomizerName1,records/item/LootMagicalAffixes/Prefix/Default/TestAffix.dbr,\nrandomizerWeight1,100,\n"),
 			},
 			OK: true,
@@ -383,11 +391,11 @@ func TestCreateItemTable(t *testing.T) {
 			InDescription: "TestItemTable",
 			Out: &table{
 				Path:    "test/Amulet/ItemTable.dbr",
-				Headers: []byte("templateName,database\\Templates\\LootItemTable_FixedWeight.tpl,\nActorName,,\nClass,LootItemTable_FixedWeight.tpl,\nFileDescription,TestItemTable,\n"),
-				Body: []byte("bothPrefixSuffix,100\n" +
+				Headers: []byte("templateName,database\\Templates\\LootItemTable_FixedWeight.tpl,\nActorName,,\nClass,LootItemTable_FixedWeight,\nFileDescription,TestItemTable,\n"),
+				Body: []byte("bothPrefixSuffix,100,\n" +
 					"lootName1,records/item/equipmenthelm/helm.dbr,\nlootWeight1,100,\n" +
-					"prefixRandomizerChance,100,\nprefixRandomizerName1,test/Amulet/ItemPrefixTable.dbr,\nprefixRandomizerWeight1,,\n" +
-					"suffixRandomizerChance,100,\nsuffixRandomizerName1,test/Amulet/ItemSuffixTable.dbr,\nsuffixRandomizerWeight1,,\n"),
+					"prefixRandomizerChance,100.000000,\nprefixRandomizerName1,test/Amulet/ItemPrefixTable.dbr,\nprefixRandomizerWeight1,100,\n" +
+					"suffixRandomizerChance,100.000000,\nsuffixRandomizerName1,test/Amulet/ItemSuffixTable.dbr,\nsuffixRandomizerWeight1,100,\n"),
 			},
 			OK: true,
 		},
@@ -400,11 +408,11 @@ func TestCreateItemTable(t *testing.T) {
 			InDescription: "TestItemTable",
 			Out: &table{
 				Path:    "test\\Amulet\\ItemTable.dbr",
-				Headers: []byte("templateName,database\\Templates\\LootItemTable_FixedWeight.tpl,\nActorName,,\nClass,LootItemTable_FixedWeight.tpl,\nFileDescription,TestItemTable,\n"),
-				Body: []byte("bothPrefixSuffix,100\n" +
+				Headers: []byte("templateName,database\\Templates\\LootItemTable_FixedWeight.tpl,\nActorName,,\nClass,LootItemTable_FixedWeight,\nFileDescription,TestItemTable,\n"),
+				Body: []byte("bothPrefixSuffix,100,\n" +
 					"lootName1,records\\item\\equipmenthelm\\helm.dbr,\nlootWeight1,100,\n" +
-					"prefixRandomizerChance,100,\nprefixRandomizerName1,test\\Amulet\\ItemPrefixTable.dbr,\nprefixRandomizerWeight1,,\n" +
-					"suffixRandomizerChance,100,\nsuffixRandomizerName1,test\\Amulet\\ItemSuffixTable.dbr,\nsuffixRandomizerWeight1,,\n"),
+					"prefixRandomizerChance,100.000000,\nprefixRandomizerName1,test\\Amulet\\ItemPrefixTable.dbr,\nprefixRandomizerWeight1,100,\n" +
+					"suffixRandomizerChance,100.000000,\nsuffixRandomizerName1,test\\Amulet\\ItemSuffixTable.dbr,\nsuffixRandomizerWeight1,100,\n"),
 			},
 			OK: true,
 		},
@@ -442,7 +450,7 @@ func TestCreateMerchantTable(t *testing.T) {
 			InDescription: "TestMerchantTable",
 			Out: &table{
 				Path:    "test/Amulet/MerchantTable.dbr",
-				Headers: []byte("templateName,database\\Templates\\LootMasterTable.tpl,\nActorName,,\nClass,LootMasterTable.tpl,\nFileDescription,TestMerchantTable,\n"),
+				Headers: []byte("templateName,database\\Templates\\LootMasterTable.tpl,\nActorName,,\nClass,LootMasterTable,\nFileDescription,TestMerchantTable,\n"),
 				Body:    []byte("lootName1,test/Amulet/ItemTable.dbr,\nlootWeight1,100,\n"),
 			},
 			OK: true,
@@ -462,6 +470,99 @@ func TestCreateMerchantTable(t *testing.T) {
 				fmt.Println(*table)
 				t.Errorf("result differs from expected table: %+v", diff)
 			}
+		})
+	}
+}
+
+func TestFlush(t *testing.T) {
+	testData := []struct {
+		Name string
+		In   *Equipment
+		Out  error
+		OK   bool
+	}{
+		{
+			Name: "TestHappyPath",
+			In: &Equipment{
+				Name:      "TestEquipment",
+				TablePath: `tmp\test_equip`,
+				Items: []Item{
+					{
+						SlotIdentifier: "Amulet",
+						BaseName:       "TestBaseName",
+						BaseRecord:     "Test/BaseRecord/record.dbr",
+						PrefixName:     "TestPrefixName",
+						PrefixRecord:   "Test/PrefixRecord/record.dbr",
+						SuffixName:     "TestSuffixName",
+						SuffixRecord:   "Test/SuffixRecord/record.dbr",
+					},
+				},
+			},
+			Out: nil,
+			OK:  true,
+		},
+		{
+			Name: "TestHappyPathMultipleItems",
+			In: &Equipment{
+				Name:      "TestEquipment",
+				TablePath: `tmp\test_equip`,
+				Items: []Item{
+					{
+						SlotIdentifier: "Amulet",
+						BaseName:       "TestBaseName",
+						BaseRecord:     "Test/BaseRecord/record.dbr",
+						PrefixName:     "TestPrefixName",
+						PrefixRecord:   "Test/PrefixRecord/record.dbr",
+						SuffixName:     "TestSuffixName",
+						SuffixRecord:   "Test/SuffixRecord/record.dbr",
+					},
+					{
+						SlotIdentifier: "Head",
+						BaseName:       "TestBaseName",
+						BaseRecord:     "Test/BaseRecord/record.dbr",
+						PrefixName:     "TestPrefixName",
+						PrefixRecord:   "Test/PrefixRecord/record.dbr",
+						SuffixName:     "TestSuffixName",
+						SuffixRecord:   "Test/SuffixRecord/record.dbr",
+					},
+				},
+			},
+			Out: nil,
+			OK:  true,
+		},
+		{
+			Name: "TestNoItems",
+			In: &Equipment{
+				Name:      "TestEquipment",
+				TablePath: `tmp\test_equip`,
+				Items:     nil,
+			},
+			Out: nil,
+			OK:  true,
+		},
+	}
+	for _, td := range testData {
+		t.Run(td.Name, func(t *testing.T) {
+			// This makes it so I can pass an invalid path for the negative case
+			if td.In.FolderPath == "" {
+				dir := t.TempDir()
+				td.In.FolderPath = dir
+			}
+			err := td.In.Flush()
+			if err != nil && td.OK {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if err == nil && !td.OK {
+				t.Error("expected error but got nil")
+			}
+			for _, item := range td.In.Items {
+				for _, table := range []string{"merchantTable.dbr", "itemTable.dbr", "itemPrefixTable.dbr", "itemSuffixTable.dbr"} {
+					if _, err := os.Stat(filepath.Join(td.In.FolderPath, td.In.TablePath, item.SlotIdentifier, table)); os.IsNotExist(err) {
+						t.Errorf("path to table %s does not exist", table)
+					}
+				}
+			}
+
 		})
 	}
 }
